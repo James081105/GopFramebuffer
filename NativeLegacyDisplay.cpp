@@ -297,10 +297,19 @@ public:
         }
     }
     IOReturn collectCompletionReports(uint32_t,void *,uint32_t *count,uint32_t) override {
-        // The original completion helper passes null optional outputs and
-        // ignores this IOReturn. GOP exposes no hardware completion telemetry.
+        // EXPERIMENT (state-document addendum AC), paired with
+        // supportedFrameInfo above.  This returned kIOReturnUnsupported on the
+        // stated belief that "the original completion helper passes null
+        // optional outputs and ignores this IOReturn".  Selector 33 -- one of
+        // the nine backboardd was refused on -- reaches this slot, so if the
+        // belief is wrong this constant is one of the twelve refusals.
+        //
+        // The belief is checkable and this is the check: report zero reports
+        // with success rather than refusing outright.  "GOP exposes no hardware
+        // completion telemetry" is still true and still said -- by *count = 0
+        // rather than by the status.
         if(count)*count=0;
-        return kIOReturnUnsupported;
+        return kIOReturnSuccess;
     }
     bool validateSwap(const OriginalLegacySwapRequest *request) override {
         // Qualified original request fields are packed; use memcpy for each
@@ -369,9 +378,22 @@ public:
     }
     // Selector 74 enumerates optional frame-info trace keys, not display
     // modes. This backend implements no trace-key subscription contract.
+    //
+    // EXPERIMENT (state-document addendum AC).  This returned
+    // kIOReturnUnsupported, and backboardd's selector 74 call was one of the
+    // twelve refusals that made it abandon the framebuffer.  The probe's
+    // dispatch row for selector 74 is in=(1,0) out=(2,64), which is exactly
+    // this signature, so this method is what answered it.
+    //
+    // "No trace keys" is the honest answer for a GOP-backed backend with no
+    // telemetry, and kIOReturnSuccess with *count = 0 says exactly that.  The
+    // question the experiment answers is whether backboardd gates on the
+    // STATUS or on the CONTENT: if it only wanted to know there are no keys,
+    // success is the correct reply and Unsupported was wrong.  If it needs the
+    // keys, it will carry on and fail later, which is also information.
     IOReturn supportedFrameInfo(uint32_t,uint32_t *count,char *key,uint32_t *mask) override {
         if(!count || !key || !mask)return kIOReturnBadArgument;
-        *count=0;*mask=0;bzero(key,64);return kIOReturnUnsupported;
+        *count=0;*mask=0;bzero(key,64);return kIOReturnSuccess;
     }
     IOReturn newUserClient(task_t task,void *security,UInt32 type,IOUserClient **client) override {
         native_legacy_client_enter(task,type);
