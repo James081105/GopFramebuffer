@@ -9,6 +9,7 @@
 #include <IOKit/pwr_mgt/IOPM.h>
 #include <IOKit/pwr_mgt/IOPMpowerState.h>
 #include <libkern/c++/OSData.h>
+#include <libkern/c++/OSSymbol.h>
 #include <pexpert/pexpert.h>
 extern "C" __attribute__((noreturn)) void native_legacy_backend_guard(unsigned,void *,void *);
 extern "C" IOService *native_legacy_display_allocate(void);
@@ -127,9 +128,25 @@ public:
     }
     // The explicit offline system-client experiment publishes only the real
     // GOP mode. Unknown backend calls retain their stop-with-caller guards.
+    //
+    // EB: this service publishes as NativeLegacyDisplay, of class
+    // IOMobileFramebufferLegacy, which derives from IOService rather than from
+    // IOMobileFramebuffer.  Neither the name IOMobileFramebuffer, nor
+    // IOMobileFramebufferService, nor the class IOMobileFramebuffer exists as a
+    // match target in this kernel -- the class has zero mangled symbols and zero
+    // vtable, and no driver source publishes either name.  So a match for any of
+    // them cannot succeed, which is a sufficient explanation for addendum DX's
+    // measurement that no UI client ever opened a user client on this driver.
+    // Publish under the name the iPadOS UI stack asks for as well, so the match
+    // has something to succeed against.  Gated by the flag that already governs
+    // publication, so an unset flag leaves the published name untouched.
     void registerService(IOOptionBits options=0) override {
         unsigned enabled=0;PE_parse_boot_argn("offline-legacy-register",&enabled,sizeof(enabled));
         if(enabled!=1)native_legacy_backend_guard(84,this,__builtin_return_address(0));
+        if(enabled==1){
+            const OSSymbol *alias=OSSymbol::withCString("IOMobileFramebufferService");
+            if(alias){setName(alias);alias->release();}
+        }
         IOService::registerService(options);native_legacy_registration_observed(this);
     }
     bool isMainDisplay() override {return primary;}
