@@ -18,6 +18,9 @@ extern "C" void native_legacy_swap_stage(unsigned);
 extern "C" void native_legacy_client_enter(task_t,uint32_t);
 extern "C" void native_legacy_client_observed(IOReturn,IOUserClient *);
 extern "C" void native_legacy_pm_observed(unsigned,IOReturn,unsigned long);
+// Task #36: the kick-path emitters, defined in LegacyDisplayProbe.cpp.
+extern "C" void native_legacy_kick_observed(unsigned);
+extern "C" void native_legacy_kick_once_observed(unsigned,unsigned);
 extern "C" IOMemoryDescriptor *native_legacy_surface_descriptor(OSObject *);
 extern "C" uint64_t native_legacy_surface_width(OSObject *),native_legacy_surface_height(OSObject *);
 extern "C" uint64_t native_legacy_surface_stride(OSObject *),native_legacy_surface_allocation(OSObject *);
@@ -135,8 +138,9 @@ public:
     // previous frame until the user touched it again). A retirement inside a kick only asks the running kick to loop.
     bool kicking=false,rekick=false;
     void kickSwapQueue() override {
-        if(kicking){rekick=true;return;}
+        if(kicking){rekick=true;native_legacy_kick_observed(1);return;}
         kicking=true;
+        native_legacy_kick_observed(0);
         do {
             rekick=false;
             kickOnce();
@@ -146,9 +150,15 @@ public:
     }
     void kickOnce() {
         unsigned enabled=0;PE_parse_boot_argn("offline-legacy-transfer",&enabled,sizeof(enabled));
-        if(enabled!=1 || transferred || !logicalPM || !bootMapping || !primary)return;
+        if(enabled!=1 || transferred || !logicalPM || !bootMapping || !primary) {
+            unsigned reason = enabled!=1 ? 1 : transferred ? 2 : !logicalPM ? 3 : !bootMapping ? 4 : 5;
+            native_legacy_kick_once_observed(1,reason);return;
+        }
         const OriginalLegacySwapRequest *request=pendingSwapRequest();
-        if(!request || !isValidated(request))return;
+        if(!request || !isValidated(request)) {
+            native_legacy_kick_once_observed(2,!request ? 6 : 7);return;
+        }
+        native_legacy_kick_once_observed(0,0);
         // This bounded first-frame transfer preserves the original queue's
         // resource ownership. Separately gated retirement follows the copy;
         // neither path signals a hardware fence, announces a vblank or
