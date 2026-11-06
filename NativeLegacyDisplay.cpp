@@ -338,24 +338,10 @@ public:
         if(count)*count=0;
         return kIOReturnSuccess;
     }
-    // Addendum FB: slot 200, the swap SUBMISSION.  Selector 17 dispatches here with a
-    // 3084-byte layer/surface structure, and the inherited original is a four-word stub
-    // that saves x0 and x1 and returns kIOReturnUnsupported -- it was never implemented,
-    // which is why validateSwap and kickSwapQueue were never reached on any boot.
-    //
-    // The minimal implementation, and it is deliberately minimal because the contract is
-    // measured rather than assumed: the family owns the request queue (head at +5480,
-    // read by pendingSwapRequest()), so this only has to start the machinery the driver
-    // already implements.  kickSwapQueue -> kickOnce reads the pending request, and
-    // kickOnce already reports WHY it stopped through the task #36 emitters -- reason 6
-    // is "no pending swap request", which would mean the family does not enqueue before
-    // calling this slot.  So this single line is also the measurement that settles
-    // whether the queue is populated here, and the next change depends on its answer
-    // rather than on a guess.
-    void submitSwap(const OriginalLegacySwapRequest *request) override {
-        (void)request;
-        kickSwapQueue();
-    }
+    // Selector 17 / slot 200 accepts the 3084-byte user gamma table, not an
+    // internal swap request. Keep the original inherited status and avoid
+    // kicking a queue for a gamma operation. The original swap_submit path is
+    // selector 5 / slot 178 and converts its 1288-byte user record itself.
     bool validateSwap(const OriginalLegacySwapRequest *request) override {
         // Qualified original request fields are packed; use memcpy for each
         // access. Accept only one full-frame, untransformed, nonplanar BGRA
